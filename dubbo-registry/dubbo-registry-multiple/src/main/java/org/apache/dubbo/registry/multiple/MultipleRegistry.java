@@ -35,7 +35,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
 
 import static org.apache.dubbo.common.constants.RegistryConstants.EMPTY_PROTOCOL;
 
@@ -206,14 +205,32 @@ public class MultipleRegistry extends AbstractRegistry {
 
     @Override
     public List<URL> lookup(URL url) {
-        List<URL> urls = new ArrayList<>();
+        List<URL> urls = new ArrayList<URL>();
         for (Registry registry : referenceRegistries.values()) {
             List<URL> tmpUrls = registry.lookup(url);
             if (!CollectionUtils.isEmpty(tmpUrls)) {
                 urls.addAll(tmpUrls);
             }
         }
-        return urls.stream().distinct().collect(Collectors.toList());
+        urls = removeDuplicate(urls);
+        return urls;
+    }
+
+    protected static List<URL> removeDuplicate(List<URL> urls) {
+        Set<List<String>> set = new HashSet<>();
+        List<URL> dedupList = new ArrayList<>();
+        for (URL url : urls) {
+            List<String> tmp = new ArrayList<>();
+            tmp.add(url.getAddress());
+            tmp.add(url.getProtocol());
+            tmp.add(url.getParameter("group"));
+            tmp.add(url.getParameter("version"));
+            if (!set.contains(tmp)) {
+                set.add(tmp);
+                dedupList.add(url);
+            }
+        }
+        return dedupList;
     }
 
     protected void init() {
@@ -311,6 +328,7 @@ public class MultipleRegistry extends AbstractRegistry {
 
         @Override
         public void notify(List<URL> urls) {
+            urls = removeDuplicate(urls);
             sourceNotifyListener.notify(urls);
         }
 
