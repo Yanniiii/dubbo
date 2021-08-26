@@ -34,6 +34,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.Collection;
 import java.util.concurrent.ConcurrentHashMap;
 
 import static org.apache.dubbo.common.constants.RegistryConstants.EMPTY_PROTOCOL;
@@ -94,9 +95,13 @@ public class MultipleRegistry extends AbstractRegistry {
                 serviceRegistries.put(tmpUrl, registryMap.get(tmpUrl));
                 continue;
             }
-            Registry registry = getRegistry(URL.valueOf(tmpUrl));
-            registryMap.put(tmpUrl, registry);
-            serviceRegistries.put(tmpUrl, registry);
+            try {
+                Registry registry = getRegistry(URL.valueOf(tmpUrl));
+                registryMap.put(tmpUrl, registry);
+                serviceRegistries.put(tmpUrl, registry);
+            } catch (Exception e){
+                LOGGER.warn(e.getMessage(),e);
+            }
         }
     }
 
@@ -108,9 +113,13 @@ public class MultipleRegistry extends AbstractRegistry {
                 referenceRegistries.put(tmpUrl, registryMap.get(tmpUrl));
                 continue;
             }
-            Registry registry = getRegistry(URL.valueOf(tmpUrl));
-            registryMap.put(tmpUrl, registry);
-            referenceRegistries.put(tmpUrl, registry);
+            try {
+                Registry registry = getRegistry(URL.valueOf(tmpUrl));
+                registryMap.put(tmpUrl, registry);
+                referenceRegistries.put(tmpUrl, registry);
+            } catch (Exception e) {
+                LOGGER.warn(e.getMessage(), e);
+            }
         }
     }
 
@@ -164,8 +173,22 @@ public class MultipleRegistry extends AbstractRegistry {
     @Override
     public void register(URL url) {
         super.register(url);
-        for (Registry registry : serviceRegistries.values()) {
-            registry.register(url);
+        RuntimeException exception = null;
+        Collection<Registry> registries = getServiceRegistries().values();
+        for (Registry registry : registries) {
+            try {
+                registry.register(url);
+            } catch (RuntimeException e) {
+                if (exception == null) {
+                    exception = e;
+                } else {
+                    exception.addSuppressed(e);
+                }
+                LOGGER.warn(e.getMessage(), e);
+            }
+        }
+        if (exception != null && exception.getSuppressed().length == registries.size() - 1) {
+            throw exception;
         }
     }
 
@@ -184,7 +207,11 @@ public class MultipleRegistry extends AbstractRegistry {
         for (Registry registry : referenceRegistries.values()) {
             SingleNotifyListener singleNotifyListener = new SingleNotifyListener(multipleNotifyListenerWrapper, registry);
             multipleNotifyListenerWrapper.putRegistryMap(registry.getUrl(), singleNotifyListener);
-            registry.subscribe(url, singleNotifyListener);
+            try {
+                registry.subscribe(url, singleNotifyListener);
+            } catch (Exception e) {
+                LOGGER.warn(e.getMessage(), e);
+            }
         }
         super.subscribe(url, multipleNotifyListenerWrapper);
     }
